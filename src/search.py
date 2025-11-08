@@ -1,3 +1,12 @@
+import os
+from dotenv import load_dotenv
+
+from langchain.prompts import PromptTemplate
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_postgres import PGVector
+
+load_dotenv()
+
 PROMPT_TEMPLATE = """
 CONTEXTO:
 {contexto}
@@ -26,4 +35,28 @@ RESPONDA A "PERGUNTA DO USUÁRIO"
 """
 
 def search_prompt(question=None):
-    pass
+  embeddings = GoogleGenerativeAIEmbeddings(model=os.getenv("GOOGLE_EMBEDDING_MODEL", "models/gemini-embedding-001"))
+
+  store = PGVector(
+    embeddings=embeddings,
+    collection_name=os.getenv("PG_VECTOR_COLLECTION_NAME"),
+    connection=os.getenv("DATABASE_URL"),
+    use_jsonb=True,
+  )
+
+  context = store.similarity_search_with_score(question, k=10)
+
+  llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.5, disable_streaming=True)
+  
+  prompt = PromptTemplate(
+    input_variables=["contexto", "pergunta"],
+    template=PROMPT_TEMPLATE
+  )
+
+  chain = prompt | llm
+
+  result = chain.invoke({"contexto": context, "pergunta": question})
+  
+  return result.content
+
+  pass
